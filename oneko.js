@@ -21,6 +21,28 @@
   let idleAnimationFrame = 0;
 
   const nekoSpeed = 10;
+
+  // Preprint behaviour: when the pointer has been still for a while, the cat
+  // walks to the element named by the script tag's data-nap-on attribute
+  // (a CSS selector) and falls asleep on it. Moving the pointer wakes it.
+  const napAfterMs = 8000;
+  let napSelector = null;
+  let lastMouseMove = Date.now();
+  let napping = false;
+
+  function napSpot() {
+    if (!napSelector) return null;
+    if (Date.now() - lastMouseMove < napAfterMs) return null;
+    const el = document.querySelector(napSelector);
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2 - 6;
+    // only nap where the reader can see it
+    if (x < 16 || x > window.innerWidth - 16) return null;
+    if (y < 16 || y > window.innerHeight - 16) return null;
+    return { x: x, y: y };
+  }
   const spriteSets = {
     idle: [[-3, -3]],
     alert: [[-7, -3]],
@@ -101,6 +123,9 @@
     if (curScript && curScript.dataset.cat) {
       nekoFile = curScript.dataset.cat
     }
+    if (curScript && curScript.dataset.napOn) {
+      napSelector = curScript.dataset.napOn
+    }
     nekoEl.style.backgroundImage = `url(${nekoFile})`;
 
     document.body.appendChild(nekoEl);
@@ -108,6 +133,7 @@
     document.addEventListener("mousemove", function (event) {
       mousePosX = event.clientX;
       mousePosY = event.clientY;
+      lastMouseMove = Date.now();
     });
 
     window.requestAnimationFrame(onAnimationFrame);
@@ -142,6 +168,11 @@
 
   function idle() {
     idleTime += 1;
+
+    // asleep on the abstract
+    if (napping && idleAnimation == null) {
+      idleAnimation = "sleeping";
+    }
 
     // every ~ 20 seconds
     if (
@@ -198,11 +229,18 @@
 
   function frame() {
     frameCount += 1;
-    const diffX = nekoPosX - mousePosX;
-    const diffY = nekoPosY - mousePosY;
+    const spot = napSpot();
+    if (napping && spot === null) {
+      resetIdleAnimation(); // woken up
+    }
+    napping = spot !== null;
+    const targetX = napping ? spot.x : mousePosX;
+    const targetY = napping ? spot.y : mousePosY;
+    const diffX = nekoPosX - targetX;
+    const diffY = nekoPosY - targetY;
     const distance = Math.sqrt(diffX ** 2 + diffY ** 2);
 
-    if (distance < nekoSpeed || distance < 48) {
+    if (distance < nekoSpeed || (!napping && distance < 48)) {
       idle();
       return;
     }
